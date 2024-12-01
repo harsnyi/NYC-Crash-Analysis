@@ -4,23 +4,16 @@ import plotly.graph_objects as go
 import geopandas as gpd
 import pandas as pd
 
-# Load GeoDataFrame and CSV file
 gdf = gpd.read_file("/Users/harsnyi/Documents/NYC-Crash-Analysis/nyc.geojson")
-df = pd.read_csv("/Users/harsnyi/Documents/NYC-Crash-Analysis/data/records.csv")
+df = pd.read_csv("/Users/harsnyi/Documents/NYC-Crash-Analysis/data/NYC_crashes.csv")
 df = df[df["BOROUGH"].notnull()]
 df_sampled = df.sample(n=1000)
-
-# Ensure the CRS is compatible with Mapbox (EPSG:4326)
 if gdf.crs != "EPSG:4326":
     gdf = gdf.to_crs("EPSG:4326")
 
 
-# Create a Dash app
-# Create a Dash app with suppress_callback_exceptions enabled
 app = Dash(__name__, suppress_callback_exceptions=True)
 
-
-# Create a choropleth map
 fig_map = px.choropleth_mapbox(
     gdf,
     geojson=gdf.__geo_interface__,
@@ -33,7 +26,6 @@ fig_map = px.choropleth_mapbox(
     opacity=0.5
 )
 
-# Extract latitude and longitude from df
 latitudes = df_sampled['LATITUDE']
 longitudes = df_sampled['LONGITUDE']
 
@@ -46,8 +38,6 @@ borough_colors = {
 }
 colors = df_sampled['BOROUGH'].map(borough_colors)
 
-
-# Clustered markers
 fig_map.add_trace(go.Scattermapbox(
     lat=latitudes,
     lon=longitudes,
@@ -58,30 +48,27 @@ fig_map.add_trace(go.Scattermapbox(
         opacity=0.7,
         cauto=True
     ),
-    name='Crash Incidents',  # Trace name
-    text=df_sampled['HOUR'],  # Display crash location on hover
-    hoverinfo='text'  # Show location text
+    name='Crash Incidents',
+    text=df_sampled['HOUR'],
+    hoverinfo='text'
 ))
 
-# Update map layout to ensure proper display
 fig_map.update_layout(
     margin={"r": 0, "t": 0, "l": 0, "b": 0},
     mapbox=dict(
-        accesstoken="your_mapbox_access_token"  # Make sure to replace with your Mapbox token if needed
+        accesstoken="your_mapbox_access_token"
     )
 )
 
-# Create a histogram using Plotly for HOUR column
 hist_fig = go.Figure()
 
 hist_fig.add_trace(go.Histogram(
     x=df['HOUR'],
-    nbinsx=len(df['HOUR'].unique()),  # Set number of bins to the number of unique hours
+    nbinsx=len(df['HOUR'].unique()),
     marker=dict(color='blue', opacity=0.7),
     name='Incidents by Hour'
 ))
 
-# Update histogram layout
 hist_fig.update_layout(
     title="Histogram of Incidents by Hour",
     xaxis_title="Hour",
@@ -92,46 +79,53 @@ hist_fig.update_layout(
 unique_years = sorted(df['YEAR'].dropna().unique())
 years_int = [int(year) for year in unique_years]
 
-# Dash app layout with the map and the histogram
 app.layout = html.Div(
     children=[
         html.H1("NYC Crash Analysis Map", style={"marginBottom": "20px"}),
         
-        
         dcc.Slider(
-            2012,
-            2024,
+            2013,
+            2023,
             step=None,
             marks={year: f"{year}" for year in years_int},
             tooltip={"always_visible": True},
             id="my-slider",
         ),
-        html.Div(id='slider-output-container'),
-
-        
         dcc.Graph(id='map-graph', figure=fig_map, style={"width": "80%", "height": "600px"}),
+        html.H3("Filter by Year and Month", style={"marginTop": "40px"}),
+        dcc.Checklist(
+            options=[{"label": str(year), "value": year} for year in range(2013, 2024)],
+            value=[2023],
+            id="new-year-toggle",
+            inline=True,
+            className="toggle-buttons",
+        ),
 
-        # Add the histogram below the map
-        html.H3("Histogram of Incidents by Hour", style={"marginTop": "40px"}),
-        dcc.Graph(id='hist-graph', figure=hist_fig, style={"width": "80%", "height": "400px"})
-    ]
+        dcc.Checklist(
+            options=[{"label": str(month), "value": month} for month in range(1, 13)],
+            value=[1],
+            id="new-month-toggle",
+            inline=True,
+            className="toggle-buttons",
+        ),
+
+        # New Histogram for crashes by hour
+        dcc.Graph(
+            id='new-hour-histogram', style={"width": "80%", "height": "600px"}),
+    ],
+    style={
+        "padding": "20px",
+        "background-color": "#BEBBBB",
+    }
 )
 
 @callback(
-    [Output('slider-output-container', 'children'),
-     Output('map-graph', 'figure'),
-     Output('hist-graph', 'figure')],  # Add Output for histogram
+    [Output('map-graph', 'figure')],
     [Input('my-slider', 'value')]
 )
 def update_map_and_histogram(value):
-    
-    # Filter the data based on the selected year
     filtered_df = df[df['YEAR'] == value]
-    
-    # Check if the filtered DataFrame has fewer than 1000 rows
-    sample_size = min(len(filtered_df), 1000)  # Sample up to 1000 rows, but no more
-    
-    # Sample the data
+    sample_size = min(len(filtered_df), 1000)
     df_sampled = filtered_df.sample(n=sample_size)
 
     # Update the map with filtered data
@@ -163,30 +157,58 @@ def update_map_and_histogram(value):
             opacity=0.7,
             cauto=True
         ),
-        name='Crash Incidents',  # Trace name
-        text=df_sampled['LOCATION'],  # Display crash location on hover
-        hoverinfo='text'  # Show location text
+        name='Crash Incidents',
+        text=df_sampled['LOCATION'],
+        hoverinfo='text'
     ))
 
-    # Update the histogram with the filtered data
-    hist_fig = go.Figure()
+    return [fig_map]
 
-    hist_fig.add_trace(go.Histogram(
-        x=df_sampled['HOUR'],
-        nbinsx=len(df_sampled['HOUR'].unique()),  # Set number of bins to the number of unique hours
-        marker=dict(color='blue', opacity=0.7),
-        name='Incidents by Hour'
-    ))
 
-    # Update histogram layout
-    hist_fig.update_layout(
-        title=f"Histogram of Incidents by Hour for {value}",
-        xaxis_title="Hour",
-        yaxis_title="Frequency",
-        bargap=0.2
-    )
+# Callback to update the new histogram
+@callback(
+    [
+        Output('new-hour-histogram', 'figure')
+    ],
+    [
+        Input('new-year-toggle', 'value'),
+        Input('new-month-toggle', 'value')
+    ]
+)
+def update_hour_histogram(selected_years, selected_months):
+    # Filter data based on the selected years and months
+    filtered_df = df[(df['YEAR'].isin(selected_years)) & (df['MONTH'].isin(selected_months))]
 
-    return f"Selected Year: {value}", fig_map, hist_fig  # Return both map and histogram
+    # Create a new histogram for the filtered data
+    new_histogram = go.Figure()
+
+    if not filtered_df.empty:
+        new_histogram.add_trace(go.Histogram(
+            x=filtered_df['HOUR'],
+            nbinsx=24,  # 24 bins for 24 hours
+            marker=dict(color='orange', opacity=0.7),
+            name='Incidents by Hour'
+        ))
+
+        new_histogram.update_layout(
+            title="Histogram of Incidents by Hour",
+            xaxis_title="Hour",
+            yaxis_title="Frequency",
+            bargap=0.2,
+            paper_bgcolor='#BEBBBB'
+        )
+    else:
+        new_histogram.update_layout(
+            title=f"No Data Available for Years {selected_years} and Months {selected_months}",
+            xaxis_title="Hour",
+            yaxis_title="Frequency",
+        )
+
+    # Display the selected years and months
+    year_output = f"Selected Years: {', '.join(map(str, selected_years))}"
+    month_output = f"Selected Months: {', '.join(map(str, selected_months))}"
+
+    return [new_histogram]
 
 
 # Run the app
