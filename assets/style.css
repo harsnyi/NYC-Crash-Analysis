@@ -6,6 +6,8 @@
     background-color: #BEBBBB;
     display: flex;
     gap: 10px; /* Space between items */
+    width: auto;  /* Make the container width adjust to its content */
+    flex-wrap: wrap; /* Allow items to wrap if necessary */
 }
 
 /* Styling Individual Labels */

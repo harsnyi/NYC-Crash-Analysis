@@ -69,38 +69,62 @@ app.layout = html.Div(
         html.H1("NYC Crash Analysis", style={
             "marginBottom": "20px",
             "width": "100%",
-            "text-align":"center",
-            "font-size":"40px"},),
+            "text-align": "center",
+            "font-size": "40px"}),
 
-        dcc.Slider(
-            2013,
-            2023,
-            step=None,
-            marks={year: f"{year}" for year in years_int},
-            tooltip={"always_visible": True},
-            id="my-slider",
-        ),
-        dcc.Graph(id='map-graph', figure=fig_map, style={"width": "80%", "height": "600px"}),
-
-        # New div wrapping the Filter by Year and Month section
         html.Div(
             children=[
                 html.H3("Filter by Year and Month", style={"marginTop": "40px"}),
 
-                dcc.Checklist(
-                    options=[{"label": str(year), "value": year} for year in range(2013, 2024)],
-                    value=[2023],
-                    id="new-year-toggle",
-                    inline=True,
-                    className="toggle-buttons",
-                ),
+                html.Div(
+                    children=[
+                        html.Div(
+                            children=[
+                                dcc.Checklist(
+                                    options=[{"label": str(year), "value": year} for year in range(2013, 2024)],
+                                    value=[2023],
+                                    id="new-year-toggle",
+                                    inline=True,
+                                    className="toggle-buttons",
+                                ),
+                                dcc.Checklist(
+                                    options=[{"label": str(month), "value": month} for month in range(1, 13)],
+                                    value=[1],
+                                    id="new-month-toggle",
+                                    inline=True,
+                                    className="toggle-buttons",
+                                ),
+                            ],
+                            style={
+                                "display": "flex",
+                                "flexDirection": "column",
+                                "marginRight": "20px",
+                                "flex": "1",
+                            }
+                        ),
 
-                dcc.Checklist(
-                    options=[{"label": str(month), "value": month} for month in range(1, 13)],
-                    value=[1],
-                    id="new-month-toggle",
-                    inline=True,
-                    className="toggle-buttons",
+                        html.Div(
+                            children=[
+                                html.Img(
+                                    src="/assets/car-crash.svg",
+                                    style={
+                                        "width": "300px",
+                                        "height": "auto",
+                                    }
+                                ),
+                            ],
+                            style={
+                                "flex": "0",
+                            }
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "flexDirection": "row",
+                        "alignItems": "center",
+                        "justifyContent": "flex-start",
+                        "padding": "0 0",
+                    }
                 ),
 
                 html.Div(
@@ -114,6 +138,10 @@ app.layout = html.Div(
                                 dcc.Graph(
                                     id='borough-pie-chart',
                                     style={"flex": "1", "marginLeft": "10px", "height": "400px"},
+                                ),
+                                dcc.Graph(
+                                    id='vehicle-type-distribution',
+                                    style={"flex": "1", "marginRight": "10px", "height": "400px"},
                                 ),
                             ],
                             style={
@@ -155,11 +183,23 @@ app.layout = html.Div(
                 )
             ],
             style={
-                "backgroundColor": "#f0f0f0",  # Set your desired background color
+                "backgroundColor": "#f0f0f0",
                 "padding": "20px",
-                "borderRadius": "10px",  # Optional: round the corners for a smoother look
+                "borderRadius": "10px",
+                "marginBottom": "20px"
             }
         ),
+        
+        dcc.Slider(
+            2013,
+            2023,
+            step=None,
+            marks={year: f"{year}" for year in years_int},
+            tooltip={"always_visible": True},
+            id="my-slider"
+        ),
+
+        dcc.Graph(id='map-graph', figure=fig_map, style={"width": "80%", "height": "600px"}),
         
     ],
     style={
@@ -261,7 +301,7 @@ def update_hour_histogram(selected_years, selected_months):
             values=borough_counts.values,
             hole=0.3,
             marker=dict(
-                colors=[borough_colors.get(borough, 'gray') for borough in borough_counts.index]  # Default to gray if not found in dictionary
+                colors=[borough_colors.get(borough, 'gray') for borough in borough_counts.index]
             )
         ))
 
@@ -277,22 +317,52 @@ def update_hour_histogram(selected_years, selected_months):
 
     return [new_histogram, pie_chart]
 
+@callback(
+    Output('vehicle-type-distribution', 'figure'),
+    [Input('new-year-toggle', 'value'),
+    Input('new-month-toggle', 'value')]
+)
+def update_vehicle_type_distribution(selected_years, selected_months):
+    filtered_df = df[(df['YEAR'].isin(selected_years)) & (df['MONTH'].isin(selected_months))]
+
+    vehicle_columns = ['VEHICLE TYPE CODE 1', 'VEHICLE TYPE CODE 2', 'VEHICLE TYPE CODE 3', 
+                        'VEHICLE TYPE CODE 4', 'VEHICLE TYPE CODE 5']
+
+    filtered_df['vehicle_type_count'] = filtered_df[vehicle_columns].notna().sum(axis=1)
+
+    vehicle_count_distribution = filtered_df['vehicle_type_count'].value_counts().reset_index()
+    vehicle_count_distribution.columns = ['Vehicle Type Count', 'Frequency']
+    vehicle_count_distribution = vehicle_count_distribution[vehicle_count_distribution["Vehicle Type Count"] > 0]
+
+    fig = px.bar(vehicle_count_distribution, 
+                y='Vehicle Type Count', 
+                x='Frequency', 
+                labels={'Vehicle Type Count': 'Number of Vehicles Involved', 'Frequency': 'Number of Crashes'},
+                title="Count of Vehicles Involved in Crashes", 
+                orientation='h')
+
+    fig.update_layout(
+        paper_bgcolor='#BEBBBB',
+        plot_bgcolor='#E8E8E8',
+        xaxis=dict(showgrid=True, gridcolor='gray'),
+        yaxis=dict(showgrid=True, gridcolor='gray')
+    )
+
+    return fig
+
 
 @callback(
     Output('borough-bar-chart', 'figure'),
     [Input('new-year-toggle', 'value'), Input('new-month-toggle', 'value')]
 )
 def update_borough_bar_chart(selected_years, selected_months):
-    # Filter data for selected years and months
     filtered_df = df[(df['YEAR'].isin(selected_years)) & (df['MONTH'].isin(selected_months))]
     
-    # Aggregate data by borough
     borough_data = filtered_df.groupby('BOROUGH').agg(
         Injured=('NUMBER OF PERSONS INJURED', 'sum'),
         Killed=('NUMBER OF PERSONS KILLED', 'sum')
     ).reset_index()
 
-    # Create the bar chart
     bar_chart = go.Figure()
 
     bar_chart.add_trace(go.Bar(
@@ -309,7 +379,6 @@ def update_borough_bar_chart(selected_years, selected_months):
         marker=dict(color='#D76A03')
     ))
 
-    # Update layout for grouped bars
     bar_chart.update_layout(
         barmode='group',
         title="Injuries and Fatalities by Borough",
@@ -330,10 +399,8 @@ def update_borough_bar_chart(selected_years, selected_months):
      Input('new-month-toggle', 'value')]
 )
 def update_crash_precipitation_line_chart(selected_years, selected_months):
-    # Filter data based on selected years and months
     filtered_df = df[(df['YEAR'].isin(selected_years)) & (df['MONTH'].isin(selected_months))]
 
-    # Group by year and month and aggregate crash count and precipitation
     monthly_data = filtered_df.groupby(['YEAR', 'MONTH']).agg(
         crash_count=('crash_time', 'size'),
         sum_precipitation=('precipitation (mm)', 'sum')
